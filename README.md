@@ -8,7 +8,7 @@ Federico Munch and Martin van Driel
 
 To download the current developer version, use git clone
 ```
-git clone https://github.com/marsquakeservice/pymodes
+git clone https://github.com/martinvandriel/pymodes
 ```
 
 ## Installation
