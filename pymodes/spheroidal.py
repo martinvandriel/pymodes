@@ -12,7 +12,6 @@ homogeneous isotropic elastic full sphere with full gravity.
 '''
 import numpy as np
 from scipy.special import spherical_jn
-from scipy.optimize import brentq
 import warnings
 
 
@@ -144,76 +143,3 @@ def analytical_characteristic_function(omega, l, rho, vs, vp, R):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return np.linalg.det(m)
-
-
-def analytical_eigen_frequencies_branch(omega_max, omega_delta, l, rho, vs, vp,
-                                        R, tol=1e-8, maxiter=100):
-    """
-    Find the zeros of the determinant of the Matrix in the 'characteristic' or
-    'Rayleigh' function according to: Takeuchi & Saito (1972) - Eq (98)-(100),
-    in 'Methods in computational physics, Volume 11'. Uses sampling first to
-    find zero crossings and then Brent's method within the resulting intervals.
-
-    :type omega_max: float
-    :param omega_max: maximum frequency to look for zeros
-    :type omega_delta: float
-    :param omega_delta: spacing for initial sampling in finding zero crossings
-
-    for other paramters see analytical_bc
-    """
-
-    # intial sampling of the characteristic function
-    omega = np.arange(0., omega_max, omega_delta)
-    det = analytical_characteristic_function(
-        omega=omega, l=l, rho=rho, vs=vs, vp=vp, R=R)
-
-    # find intervals with zero crossing
-    # catch NaN warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        idx_zero_crossing = det[1:] * det[:-1] < 0
-        # TODO: add a check that we are not in numerical noise
-
-    nf = idx_zero_crossing.sum()
-
-    omega_a = omega[:-1][idx_zero_crossing]
-    omega_b = omega[1:][idx_zero_crossing]
-
-    eigen_frequencies = np.zeros(nf)
-
-    # loop over intervals and converge to tolerance using Brent's method
-    for i in np.arange(nf):
-        eigen_frequencies[i] = brentq(
-            f=analytical_characteristic_function, a=omega_a[i], b=omega_b[i],
-            args=(l, rho, vs, vp, R), xtol=tol, maxiter=maxiter, disp=True)
-
-    return eigen_frequencies
-
-
-if __name__ == "__main__":
-
-    omega_max = 0.01
-    omega_delta = 0.000001
-    omega = np.arange(0., omega_max, omega_delta)
-
-    l = 10
-    rho = 1e3
-    vs = 1e3
-    vp = 1.7e3
-    R = 6371e3
-
-    det = analytical_characteristic_function(omega, l, rho, vs, vp, R)
-
-    freq = analytical_eigen_frequencies_branch(
-        omega_max, omega_delta, l, rho, vs, vp, R)
-
-    print freq
-
-    import matplotlib.pyplot as plt
-    plt.plot(omega, det)
-    plt.axhline(0., color='k')
-
-    for f in freq:
-        plt.axvline(f, color='k')
-
-    plt.show()
