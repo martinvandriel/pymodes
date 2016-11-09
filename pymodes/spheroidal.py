@@ -18,6 +18,22 @@ import warnings
 G = 6.67408e-11
 
 
+def _k1_sqr(omega, l, rho, vs, vp, R):
+    # Auxiliar variables
+    mu = rho * vs ** 2
+    omega = np.array(omega)
+    w2 = omega ** 2
+
+    gamma = 4. * np.pi * G * rho / 3.
+
+    a = (w2 + 4. * gamma) / vp ** 2 + w2 / vs ** 2
+    b = (w2 / vs ** 2) - (w2 + 4. * gamma) / vp ** 2
+    c = 4. * l * (l + 1) * gamma ** 2 / (vp ** 2 * vs ** 2)
+    d = (b ** 2 + c) ** 0.5
+
+    return (a - d) / 2
+
+
 def analytical_bc(omega, l, rho, vs, vp, R, gravity=True):
     """
     Compute the Matrix in the 'characteristic' or 'Rayleigh' function according
@@ -114,6 +130,12 @@ def analytical_bc(omega, l, rho, vs, vp, R, gravity=True):
         y23 *= np.ones_like(omega)
         y43 *= np.ones_like(omega)
 
+        # if omega.ndim == 1:
+        #     import matplotlib.pyplot as plt
+        #     plt.figure()
+        #     plt.plot(omega, k1)
+        #     plt.plot(omega, k2)
+
         # Build matrix
         return np.array([[y21, y22, y23], [y41, y42, y43], [y61, y62, y63]])
 
@@ -132,6 +154,7 @@ def analytical_characteristic_function(omega, l, rho, vs, vp, R):
     """
 
     m = analytical_bc(omega=omega, l=l, rho=rho, vs=vs, vp=vp, R=R)
+    #m = np.nan_to_num(m)
 
     # np.linalg.det expects the last two axis to be the matrizes
     # analytical_bc returns the frequency on the last axis, so need to roll it
