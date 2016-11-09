@@ -18,9 +18,10 @@ def test_analytical_bc():
     m = spheroidal.analytical_bc(omega=0.01, l=10, rho=1e3, vs=1e3, vp=1.7e3,
                                  R=6371e3)
 
-    m_ref = np.array([[6.62305365e-01, -1.92070366e-03, 2.82530215e+04],
+    m_ref = np.array([[-5.98712990e-01, -4.52263515e-04, 4.43462902e-03],
                       [1.36912996e-04, -1.45827457e-03, 4.43462902e-04],
                       [8.65248156e-12, -2.28496427e-13, -3.21720079e-10]])
+
     np.testing.assert_allclose(m, m_ref)
 
     # check vectorization on omega
@@ -40,9 +41,9 @@ def test_analytical_characteristic_function():
     det = spheroidal.analytical_characteristic_function(
         omega=omega, l=10, rho=1e3, vs=1e3, vp=1.7e3, R=6371e3)
 
-    det_ref = np.array([np.NaN, -9.90890439e-16, 1.33665845e-11,
-                        3.00013818e-11, -1.60244314e-11, -1.88052027e-10,
-                        3.55914802e-10, -1.26477769e-10, -3.65516534e-10,
-                        5.06938358e-10])
+    det_ref = np.array([np.nan, -2.87907214e-23, -7.54565054e-17,
+                        4.10944167e-16, -1.28911838e-15, 6.69131228e-14,
+                        -2.80916424e-13, 2.08765859e-13, 9.94475582e-13,
+                        -2.37919436e-12])
 
     np.testing.assert_allclose(det, det_ref)

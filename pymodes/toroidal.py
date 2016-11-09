@@ -44,7 +44,8 @@ def analytical_bc(omega, l, rho, vs, vp, R):
     return y2
 
 
-def analytical_characteristic_function(omega, l, rho, vs, vp, R):
+def analytical_characteristic_function(omega, l, rho, vs, vp, R,
+                                       gravity=False):
     """
     Compute the 'characteristic' or function - for toroidal modes this is just
     a wrapper to analytical_bc, see Takeuchi & Saito Eq (77)

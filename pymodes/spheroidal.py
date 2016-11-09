@@ -18,22 +18,6 @@ import warnings
 G = 6.67408e-11
 
 
-def _k1_sqr(omega, l, rho, vs, vp, R):
-    # Auxiliar variables
-    mu = rho * vs ** 2
-    omega = np.array(omega)
-    w2 = omega ** 2
-
-    gamma = 4. * np.pi * G * rho / 3.
-
-    a = (w2 + 4. * gamma) / vp ** 2 + w2 / vs ** 2
-    b = (w2 / vs ** 2) - (w2 + 4. * gamma) / vp ** 2
-    c = 4. * l * (l + 1) * gamma ** 2 / (vp ** 2 * vs ** 2)
-    d = (b ** 2 + c) ** 0.5
-
-    return (a - d) / 2
-
-
 def analytical_bc(omega, l, rho, vs, vp, R, gravity=True):
     """
     Compute the Matrix in the 'characteristic' or 'Rayleigh' function according
@@ -59,7 +43,7 @@ def analytical_bc(omega, l, rho, vs, vp, R, gravity=True):
 
     # Auxiliar variables
     mu = rho * vs ** 2
-    # lam = rho * vp ** 2 - 2 * mu
+    lam = rho * vp ** 2 - 2 * mu
     omega = np.array(omega)
     w2 = omega ** 2
 
@@ -95,15 +79,15 @@ def analytical_bc(omega, l, rho, vs, vp, R, gravity=True):
 
         # Compute matrix's elements  - Eq (98 & 100) Takeuchi & Saito (1972)
         # Solutions y2i (named as R by Dahlen & Tromp book)
-        y21 = ((vp ** 2 * rho) * f1 * x1 ** 2 * j_n_x1 +
-               2 * mu * l * (l-1) * h1 * j_n_x1 +
+        y21 = (-vp ** 2 * rho * f1 * x1 ** 2 * j_n_x1 +
+               2 * mu * l * (l - 1) * h1 * j_n_x1 +
                2 * mu * (2 * f1 + l * (l + 1)) * x1 * j_np1_x1) / R ** 2
 
-        y22 = ((vp ** 2 * rho) * f2 * x2 ** 2 * j_n_x2 +
+        y22 = (-vp ** 2 * rho * f2 * x2 ** 2 * j_n_x2 +
                2 * mu * l * (l - 1) * h2 * j_n_x2 +
                2 * mu * (2 * f2 + l * (l + 1)) * x2 * j_np1_x2) / R ** 2
 
-        y23 = 2. * mu * l * (l - 1) / R
+        y23 = 2 * mu * l * (l - 1) / R ** 2
 
         # Solutions y4i (named as S by Dahlen & Tromp book)
         y41 = (mu * x1 ** 2 * j_n_x1 + mu * 2 * (l - 1) * h1 * j_n_x1 -
@@ -122,29 +106,43 @@ def analytical_bc(omega, l, rho, vs, vp, R, gravity=True):
 
         # Solutions y6i (named as B by Dahlen & Tromp book)
         y61 = ((2 * l + 1) * y51 - 3 * l * gamma * h1 * j_n_x1) / R
-        y62 = ((2 * l + 1) * y52 - 3. * l * gamma * h2 * j_n_x2) / R
-        y63 = (2 * l + 1) * y53 / R - 3. * l * gamma / R
+        y62 = ((2 * l + 1) * y52 - 3 * l * gamma * h2 * j_n_x2) / R
+        y63 = ((2 * l + 1) * y53 - 3 * l * gamma) / R
 
         # make sure also frequency independent terms are vectorized in the same
         # way as omega
         y23 *= np.ones_like(omega)
         y43 *= np.ones_like(omega)
 
-        # if omega.ndim == 1:
-        #     import matplotlib.pyplot as plt
-        #     plt.figure()
-        #     plt.plot(omega, k1)
-        #     plt.plot(omega, k2)
-
         # Build matrix
         return np.array([[y21, y22, y23], [y41, y42, y43], [y61, y62, y63]])
 
     else:
-        raise NotImplementedError()
+        x1 = omega / vp * R
+
+        j_n_x1 = spherical_jn(l, x1)
+        j_np1_x1 = spherical_jn(l+1, x1)
+
+        y21 = (-(lam + 2 * mu) * x1 ** 2 * j_n_x1 +
+               2 * mu * (l * (l - 1) * j_n_x1 + 2 * x1 * j_np1_x1)) / R ** 2
+
+        y41 = 2 * mu * ((l - 1) * j_n_x1 - x1 * j_np1_x1) / R ** 2
+
+        x2 = omega / vs * R
+
+        j_n_x2 = spherical_jn(l, x2)
+        j_np1_x2 = spherical_jn(l+1, x2)
+
+        y22 = 2 * mu * (
+            -l * (l ** 2 - 1) * j_n_x2 + l * (l + 1) * x2 * j_np1_x2) / R ** 2
+
+        y42 = mu * (x2 ** 2 * j_n_x2 - 2 * (l ** 2 - 1) * j_n_x2 -
+                    2 * x2 * j_np1_x2) / R ** 2
+
         return np.array([[y21, y22], [y41, y42]])
 
 
-def analytical_characteristic_function(omega, l, rho, vs, vp, R):
+def analytical_characteristic_function(omega, l, rho, vs, vp, R, gravity=True):
     """
     Compute the determinant of the Matrix in the 'characteristic' or 'Rayleigh'
     function according to: Takeuchi & Saito (1972) - Eq (98)-(100), in 'Methods
@@ -153,8 +151,8 @@ def analytical_characteristic_function(omega, l, rho, vs, vp, R):
     for paramters see analytical_bc
     """
 
-    m = analytical_bc(omega=omega, l=l, rho=rho, vs=vs, vp=vp, R=R)
-    #m = np.nan_to_num(m)
+    m = analytical_bc(omega=omega, l=l, rho=rho, vs=vs, vp=vp, R=R,
+                      gravity=gravity)
 
     # np.linalg.det expects the last two axis to be the matrizes
     # analytical_bc returns the frequency on the last axis, so need to roll it

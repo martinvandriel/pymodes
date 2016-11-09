@@ -18,8 +18,9 @@ from . import spheroidal
 from . import toroidal
 
 
-def analytical_eigen_frequencies_branch(omega_max, omega_delta, l, rho, vs, vp,
-                                        R, tol=1e-8, maxiter=100, mode='T'):
+def analytical_eigen_frequencies(omega_max, omega_delta, l, rho, vs, vp,
+                                 R, tol=1e-8, maxiter=100, mode='T',
+                                 gravity=True):
     """
     Find the zeros of the determinant of the Matrix in the 'characteristic' or
     'Rayleigh' function according to: Takeuchi & Saito (1972), Eq (98)-(100)
@@ -46,7 +47,7 @@ def analytical_eigen_frequencies_branch(omega_max, omega_delta, l, rho, vs, vp,
         raise ValueError('mode needs to be S or T')
 
     det = module.analytical_characteristic_function(
-        omega=omega, l=l, rho=rho, vs=vs, vp=vp, R=R)
+        omega=omega, l=l, rho=rho, vs=vs, vp=vp, R=R, gravity=gravity)
 
     # find intervals with zero crossing
     # catch NaN warnings
@@ -66,7 +67,28 @@ def analytical_eigen_frequencies_branch(omega_max, omega_delta, l, rho, vs, vp,
     for i in np.arange(nf):
         eigen_frequencies[i] = brentq(
             f=module.analytical_characteristic_function, a=omega_a[i],
-            b=omega_b[i], args=(l, rho, vs, vp, R), xtol=tol, maxiter=maxiter,
-            disp=True)
+            b=omega_b[i], args=(l, rho, vs, vp, R, gravity), xtol=tol,
+            maxiter=maxiter, disp=True)
 
     return eigen_frequencies
+
+
+def analytical_eigen_frequencies_catalogue(omega_max, omega_delta, lmax, rho,
+                                           vs, vp, R, tol=1e-8, maxiter=100,
+                                           mode='T', gravity=True):
+
+    catalogue = []
+    for l in np.arange(1, lmax+1):
+        catalogue.append(
+            analytical_eigen_frequencies(
+                omega_max, omega_delta, l, rho, vs, vp, R, tol=tol,
+                maxiter=maxiter, mode=mode, gravity=gravity))
+
+    maxn = max([len(x) for x in catalogue])
+
+    catalogue_array = np.empty((lmax, maxn+1)) * np.nan
+    for i, overtones in enumerate(catalogue):
+        ofs = int(i == 0)
+        catalogue_array[i, ofs:ofs+len(overtones)] = overtones
+
+    return catalogue_array
