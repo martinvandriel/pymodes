@@ -11,6 +11,7 @@ full sphere.
 '''
 import numpy as np
 from scipy.special import spherical_jn
+from scipy.integrate import ode
 
 
 def analytical_bc(omega, l, rho, vs, vp, R):
@@ -54,3 +55,75 @@ def analytical_characteristic_function(omega, l, rho, vs, vp, R,
     """
 
     return analytical_bc(omega=omega, l=l, rho=rho, vs=vs, vp=vp, R=R)
+
+
+def dy_dr(r, y, model, l, omega):
+
+    if model.anisotropic:
+        vsv = model.get_native_parameter('VSV', r/model.scale)
+        vsh = model.get_native_parameter('VSH', r/model.scale)
+    else:
+        vsv = model.get_native_parameter('VS', r/model.scale)
+        vsh = vsv
+
+    rho = model.get_native_parameter('RHO', r/model.scale)
+
+    L = rho * vsv ** 2
+    N = rho * vsh ** 2
+
+    dy1_dr = 1 / r * y[0] + 1 / L * y[1]
+    dy2_dr = (((l - 1) * (l + 2) * N / r ** 2 - omega ** 2 * rho) * y[0] -
+              3 / r * y[1])
+
+    return [dy1_dr, dy2_dr]
+
+
+def integrate_radial(model, l, omega, nsteps=10000, rtol=1e-15, r_0=1e-10,
+                     nsamp_per_layer=100):
+
+    # adapt discontinuities to r_0
+    idx = model.discontinuities > r_0 / model.scale
+    ndisc = idx.sum() + 1
+
+    discontinuities = np.zeros(ndisc)
+    discontinuities[0] = r_0 / model.scale
+    discontinuities[1:] = model.discontinuities[idx]
+
+    # build sampling for return arrays
+    r = np.concatenate([np.linspace(discontinuities[iregion],
+                                    discontinuities[iregion+1],
+                                    nsamp_per_layer, endpoint=False)
+                        for iregion in range(ndisc-1)])
+    r = np.r_[r, np.array([1.])]
+    r_in_m = r * model.scale
+
+    # assume to start at a stress free boundary and set initial conditions
+    nr = len(r)
+    y1 = np.zeros(nr)
+    y1[0] = 1.
+    y2 = np.zeros(nr)
+    y2[0] = 0.
+
+    integrator = ode(dy_dr)
+    integrator.set_integrator('dopri5', nsteps=nsteps, rtol=rtol)
+    integrator.set_initial_value([y1[0], y2[0]], r_0)
+    integrator.set_f_params(model, l, omega)
+
+    # Do the actual integration
+    for i in np.arange(nr - 1):
+        integrator.integrate(r_in_m[i+1])
+
+        if not integrator.successful():
+            raise RuntimeError(
+                "Integration Error while intgrating radial equation")
+
+        y1[i+1], y2[i+1] = integrator.y
+
+        # avoid float overflows by rescaling if the solution grows big
+        while abs(y1[i+1]) > 1e3 or abs(y2[i+1]) > 1e3:
+            y1 /= 10
+            y2 /= 10
+
+        integrator.set_initial_value([y1[i+1], y2[i+1]], integrator.t)
+
+    return r_in_m, y1, y2
