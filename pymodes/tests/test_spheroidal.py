@@ -11,6 +11,7 @@ Tests for the spheroidal functions.
 import numpy as np
 
 from .. import spheroidal
+from .. import eigenfrequencies
 
 
 def test_analytical_bc():
@@ -47,3 +48,18 @@ def test_analytical_characteristic_function():
                         -2.37919436e-12])
 
     np.testing.assert_allclose(det, det_ref)
+
+
+def test_integrate_radial():
+    # for homogeneous model, check eigenfrequencies
+
+    freq = eigenfrequencies.analytical_eigen_frequencies(
+        omega_max=0.01, omega_delta=0.00001, l=10, rho=1e3, vs=1e3, vp=1.7e3,
+        R=6371e3, mode='S', gravity=False)
+
+    for f in freq[:5]:
+        r, Y2 = spheroidal.integrate_radial(
+            rho=1e3, vs=1e3, vp=1.7e3, R=6371e3, l=10, omega=f, r_0=1.,
+            nsamp_per_layer=100, rtol=1e-10)
+
+        assert abs(Y2[-1] / Y2.ptp()) < 2e-5

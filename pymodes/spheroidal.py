@@ -11,6 +11,7 @@ homogeneous isotropic elastic full sphere with full gravity.
     None
 '''
 import numpy as np
+from scipy.integrate import ode
 from scipy.special import spherical_jn
 import warnings
 
@@ -164,3 +165,168 @@ def analytical_characteristic_function(omega, l, rho, vs, vp, R, gravity=True):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return np.linalg.det(m)
+
+
+def dY_dr_homo(r, Y, A, C, L, N, F, rho, l, omega):
+    """
+    Takeuchi & Saito (1972), Eq. (164) for homogeneous models.
+    """
+
+    Y1, Y2, Y3, Y4, Y5 = Y
+
+    a = A - F ** 2 / C - N
+    b = A - F ** 2 / C
+
+    c = l * (l + 1) / r ** 2
+    d = l * (l + 1) / r
+
+    e = omega ** 2 * rho
+
+    dY1_dr = (1 / r * (1 - 2 * F / C) * Y1 +
+              1 / L * Y4 -
+              1 / C * Y5)
+
+    dY2_dr = (1 / r * (2 * F / C - 5) * Y2 +
+              4 / r ** 2 * a * Y3 +
+              (-e + 4 / r ** 2 * a) * Y4 +
+              (e - c * b + 2 * N / r ** 2) * Y5)
+
+    dY3_dr = (-2 * c * a * Y1 -
+              2 / r * Y3 +
+              d * Y4 +
+              d * F / C * Y5)
+
+    dY4_dr = ((-e + c * b - 2 * N / r ** 2) * Y1 +
+              1 / C * Y2 -
+              2 * F / (C * r) * Y3 -
+              1 / r * (3 + 2 * F / C) * Y4)
+
+    dY5_dr = ((e - 4 / r ** 2 * a) * Y1 -
+              1 / L * Y2 -
+              2 / r * Y3 -
+              1 / r * (1 - 2 * F / C) * Y5)
+
+    return [dY1_dr, dY2_dr, dY3_dr, dY4_dr, dY5_dr]
+
+
+def z_l(l, x):
+    """
+    Takeuchi & Saito (1972), Eq. (96).
+    """
+    return x * spherical_jn(l+1, x) / spherical_jn(l, x)
+
+
+def Y_initial_conditions(r1, vp, vs, rho, l, omega):
+    """
+    Takeuchi & Saito (1972), Eq. (165).
+    """
+
+    xa = omega / vp * r1
+    xb = omega / vs * r1
+
+    za = 1. / l * z_l(l, xa)
+    zb = 1. / (l + 1) * z_l(l, xb)
+
+    mu = rho * vs ** 2
+
+    Y1 = 1. / l * (-za + zb * (za - 1))
+
+    Y2 = mu ** 2 / r1 ** 2 * (
+        -4 * (l - 1) * (l + 2) * Y1 +
+        xb ** 2 / l * (xb ** 2 / (l * (l + 1)) -
+                       2. * (l - 1) * (2 * l + 1) / (l * (l + 1.)) -
+                       4. / (l + 1) * za - 2. / l * zb))
+
+    Y3 = mu / r1 * (xb ** 2 / l + 2 * l * (l + 1) * Y1)
+
+    Y4 = mu / r1 * (-2 * Y1 + xb ** 2 / (l * (l + 1)) * (za - 1))
+
+    Y5 = mu / r1 * (xb ** 2 / l ** 2 * (1 - zb) + 4 * Y1)
+
+    return [Y1, Y2, Y3, Y4, Y5]
+
+
+def integrate_radial(omega, l, rho=None, vs=None, vp=None, R=None, model=None,
+                     nsteps=10000, rtol=1e-15, r_0=1e-10, nsamp_per_layer=100):
+    """
+    integrate the minor vector equation Takeuchi & Saito (1972), Eq (164)
+    radially, initial conditions assume a homogeneous sphere within the radius
+    r_0. Fully solid planets only.
+    """
+
+    if model is not None:
+        raise NotImplementedError()
+
+        if np.any(model.get_is_fluid()):
+            raise ValueError('Not a fully solid planet!')
+
+        # # adapt discontinuities to r_0
+        # idx = model.discontinuities > r_0 / model.scale
+        # ndisc = idx.sum() + 1
+
+        # discontinuities = np.zeros(ndisc)
+        # discontinuities[0] = r_0 / model.scale
+        # discontinuities[1:] = model.discontinuities[idx]
+
+        # # build sampling for return arrays
+        # r = np.concatenate([np.linspace(discontinuities[iregion],
+        #                                 discontinuities[iregion+1],
+        #                                 nsamp_per_layer, endpoint=False)
+        #                     for iregion in range(ndisc-1)])
+        # r = np.r_[r, np.array([1.])]
+        # r_in_m = r * model.scale
+
+        # integrator = ode(dy_dr)
+        # integrator.set_f_params(model, l, omega)
+
+    elif rho is not None and vs is not None and vp is not None \
+            and R is not None:
+
+        if vs == 0:
+            raise ValueError('Not a fully solid planet!')
+
+        r_in_m = np.linspace(r_0, R, nsamp_per_layer+1)
+
+        mu = rho * vs ** 2
+        lam = rho * vp ** 2 - 2 * mu
+
+        A = rho * vp ** 2
+        C = A
+        L = mu
+        N = mu
+        F = lam
+
+        integrator = ode(dY_dr_homo)
+        integrator.set_f_params(A, C, L, N, F, rho, l, omega)
+    else:
+        raise ValueError('either provide a pymesher model or vs, rho and R')
+
+    # assume to start at a stress free boundary and set initial conditions
+    nr = len(r_in_m)
+    Y2 = np.zeros(nr)
+    initial_conditions = Y_initial_conditions(r_0, vp, vs, rho, l, omega)
+    Y2[0] = initial_conditions[1]
+
+    integrator.set_integrator('dopri5', nsteps=nsteps, rtol=rtol)
+    integrator.set_initial_value(initial_conditions, r_0)
+
+    # Do the actual integration
+    for i in np.arange(nr - 1):
+
+        integrator.integrate(r_in_m[i+1])
+
+        if not integrator.successful():
+            raise RuntimeError(
+                "Integration Error while intgrating radial equation")
+
+        Y2[i+1] = integrator.y[1]
+
+        # avoid float overflows by rescaling if the solution grows big
+        rfac = 1.
+        while abs(Y2[i+1]) > 1e3:
+            Y2 /= 10
+            rfac /= 10
+
+        integrator.set_initial_value(integrator.y * rfac, integrator.t)
+
+    return r_in_m, Y2

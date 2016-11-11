@@ -10,8 +10,8 @@ full sphere.
     None
 '''
 import numpy as np
-from scipy.special import spherical_jn
 from scipy.integrate import ode
+from scipy.special import spherical_jn
 
 
 def analytical_bc(omega, l, rho, vs, vp, R):
@@ -58,6 +58,9 @@ def analytical_characteristic_function(omega, l, rho, vs, vp, R,
 
 
 def dy_dr(r, y, model, l, omega):
+    """
+    Takeuchi & Saito (1972), Eq. (76) for general models.
+    """
 
     if model.anisotropic:
         vsv = model.get_native_parameter('VSV', r/model.scale)
@@ -78,39 +81,69 @@ def dy_dr(r, y, model, l, omega):
     return [dy1_dr, dy2_dr]
 
 
-def integrate_radial(model, l, omega, nsteps=10000, rtol=1e-15, r_0=1e-10,
-                     nsamp_per_layer=100):
+def dy_dr_homo(r, y, L, N, rho, l, omega):
+    """
+    Takeuchi & Saito (1972), Eq. (76) for homogeneous models.
+    """
 
-    # adapt discontinuities to r_0
-    idx = model.discontinuities > r_0 / model.scale
-    ndisc = idx.sum() + 1
+    dy1_dr = 1 / r * y[0] + 1 / L * y[1]
+    dy2_dr = (((l - 1) * (l + 2) * N / r ** 2 - omega ** 2 * rho) * y[0] -
+              3 / r * y[1])
 
-    discontinuities = np.zeros(ndisc)
-    discontinuities[0] = r_0 / model.scale
-    discontinuities[1:] = model.discontinuities[idx]
+    return [dy1_dr, dy2_dr]
 
-    # build sampling for return arrays
-    r = np.concatenate([np.linspace(discontinuities[iregion],
-                                    discontinuities[iregion+1],
-                                    nsamp_per_layer, endpoint=False)
-                        for iregion in range(ndisc-1)])
-    r = np.r_[r, np.array([1.])]
-    r_in_m = r * model.scale
+
+def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
+                     nsteps=10000, rtol=1e-15, r_0=1e-10, nsamp_per_layer=100):
+    """
+    integrate Takeuchi & Saito (1972), Eq (76) radially, subject to stress free
+    initial conditions (e.g. the CMB).
+    """
+
+    if model is not None:
+        # adapt discontinuities to r_0
+        idx = model.discontinuities > r_0 / model.scale
+        ndisc = idx.sum() + 1
+
+        discontinuities = np.zeros(ndisc)
+        discontinuities[0] = r_0 / model.scale
+        discontinuities[1:] = model.discontinuities[idx]
+
+        # build sampling for return arrays
+        r = np.concatenate([np.linspace(discontinuities[iregion],
+                                        discontinuities[iregion+1],
+                                        nsamp_per_layer, endpoint=False)
+                            for iregion in range(ndisc-1)])
+        r = np.r_[r, np.array([1.])]
+        r_in_m = r * model.scale
+
+        integrator = ode(dy_dr)
+        integrator.set_f_params(model, l, omega)
+
+    elif rho is not None and vs is not None and R is not None:
+        r_in_m = np.linspace(r_0, R, nsamp_per_layer+1)
+
+        L = rho * vs ** 2
+        N = rho * vs ** 2
+
+        integrator = ode(dy_dr_homo)
+        integrator.set_f_params(L, N, rho, l, omega)
+    else:
+        raise ValueError('either provide a pymesher model or vs, rho and R')
 
     # assume to start at a stress free boundary and set initial conditions
-    nr = len(r)
+    nr = len(r_in_m)
     y1 = np.zeros(nr)
     y1[0] = 1.
     y2 = np.zeros(nr)
     y2[0] = 0.
 
-    integrator = ode(dy_dr)
     integrator.set_integrator('dopri5', nsteps=nsteps, rtol=rtol)
     integrator.set_initial_value([y1[0], y2[0]], r_0)
-    integrator.set_f_params(model, l, omega)
 
     # Do the actual integration
     for i in np.arange(nr - 1):
+
         integrator.integrate(r_in_m[i+1])
 
         if not integrator.successful():

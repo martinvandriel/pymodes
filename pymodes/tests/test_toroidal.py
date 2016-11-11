@@ -48,7 +48,14 @@ def test_integrate_radial():
         omega_max=0.01, omega_delta=0.00001, l=10, rho=1e3, vs=1e3, vp=1.7e3,
         R=6371e3, mode='T')
 
-    r, y1, y2 = toroidal.integrate_radial(model, l=10, omega=freq[0], r_0=1.,
-                                          nsamp_per_layer=100, rtol=1e-10)
+    r, y1, y2 = toroidal.integrate_radial(model=model, l=10, omega=freq[0],
+                                          r_0=1., nsamp_per_layer=100,
+                                          rtol=1e-10)
+
+    np.testing.assert_allclose(y2[-1], 0., atol=1e-5)
+
+    r, y1, y2 = toroidal.integrate_radial(
+        rho=1e3, vs=1e3, R=6371e3, l=10, omega=freq[0], r_0=1.,
+        nsamp_per_layer=100, rtol=1e-10)
 
     np.testing.assert_allclose(y2[-1], 0., atol=1e-5)
