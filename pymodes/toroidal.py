@@ -74,11 +74,7 @@ def dy_dr(r, y, model, l, omega):
     L = rho * vsv ** 2
     N = rho * vsh ** 2
 
-    dy1_dr = 1 / r * y[0] + 1 / L * y[1]
-    dy2_dr = (((l - 1) * (l + 2) * N / r ** 2 - omega ** 2 * rho) * y[0] -
-              3 / r * y[1])
-
-    return [dy1_dr, dy2_dr]
+    return dy_dr_homo(r, y, L, N, rho, l, omega)
 
 
 def dy_dr_homo(r, y, L, N, rho, l, omega):

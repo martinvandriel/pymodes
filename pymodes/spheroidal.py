@@ -167,6 +167,36 @@ def analytical_characteristic_function(omega, l, rho, vs, vp, R, gravity=True):
         return np.linalg.det(m)
 
 
+def dY_dr(r, Y, model, l, omega):
+    """
+    Takeuchi & Saito (1972), Eq. (76) for general models.
+    """
+
+    if model.anisotropic:
+        vsv = model.get_native_parameter('VSV', r/model.scale)
+        vsh = model.get_native_parameter('VSH', r/model.scale)
+        vpv = model.get_native_parameter('VPV', r/model.scale)
+        vph = model.get_native_parameter('VPH', r/model.scale)
+        eta = model.get_native_parameter('ETA', r/model.scale)
+    else:
+        vsv = model.get_native_parameter('VS', r/model.scale)
+        vpv = model.get_native_parameter('VP', r/model.scale)
+        vsh = vsv
+        vph = vpv
+        eta = 1
+
+    rho = model.get_native_parameter('RHO', r/model.scale)
+
+    # Nolet (2008), p292
+    A = rho * vph ** 2
+    C = rho * vpv ** 2
+    L = rho * vsv ** 2
+    N = rho * vsh ** 2
+    F = eta * (A - 2 * L)
+
+    return dY_dr_homo(r, Y, A, C, L, N, F, rho, l, omega)
+
+
 def dY_dr_homo(r, Y, A, C, L, N, F, rho, l, omega):
     """
     Takeuchi & Saito (1972), Eq. (164) for homogeneous models.
@@ -255,29 +285,33 @@ def integrate_radial(omega, l, rho=None, vs=None, vp=None, R=None, model=None,
     """
 
     if model is not None:
-        raise NotImplementedError()
-
-        if np.any(model.get_is_fluid()):
+        if np.any(model.get_fluid_regions()):
             raise ValueError('Not a fully solid planet!')
 
-        # # adapt discontinuities to r_0
-        # idx = model.discontinuities > r_0 / model.scale
-        # ndisc = idx.sum() + 1
+        # adapt discontinuities to r_0
+        idx = model.discontinuities > r_0 / model.scale
+        ndisc = idx.sum() + 1
 
-        # discontinuities = np.zeros(ndisc)
-        # discontinuities[0] = r_0 / model.scale
-        # discontinuities[1:] = model.discontinuities[idx]
+        discontinuities = np.zeros(ndisc)
+        discontinuities[0] = r_0 / model.scale
+        discontinuities[1:] = model.discontinuities[idx]
 
-        # # build sampling for return arrays
-        # r = np.concatenate([np.linspace(discontinuities[iregion],
-        #                                 discontinuities[iregion+1],
-        #                                 nsamp_per_layer, endpoint=False)
-        #                     for iregion in range(ndisc-1)])
-        # r = np.r_[r, np.array([1.])]
-        # r_in_m = r * model.scale
+        # build sampling for return arrays
+        r = np.concatenate([np.linspace(discontinuities[iregion],
+                                        discontinuities[iregion+1],
+                                        nsamp_per_layer, endpoint=False)
+                            for iregion in range(ndisc-1)])
+        r = np.r_[r, np.array([1.])]
+        r_in_m = r * model.scale
 
-        # integrator = ode(dy_dr)
-        # integrator.set_f_params(model, l, omega)
+        # evaluate model to compute initial values assuming isotropic,
+        # homogeneous sphere in the center
+        vp = model.get_elastic_parameter('VP', r[:1])[0]
+        vs = model.get_elastic_parameter('VS', r[:1])[0]
+        rho = model.get_elastic_parameter('RHO', r[:1])[0]
+
+        integrator = ode(dY_dr)
+        integrator.set_f_params(model, l, omega)
 
     elif rho is not None and vs is not None and vp is not None \
             and R is not None:

@@ -8,10 +8,18 @@ Tests for the spheroidal functions.
 :license:
     None
 '''
+import inspect
 import numpy as np
+import os
+import pymesher
 
 from .. import spheroidal
 from .. import eigenfrequencies
+
+
+# Most generic way to get the data directory.
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(inspect.getfile(
+    inspect.currentframe()))), "data")
 
 
 def test_analytical_bc():
@@ -61,5 +69,14 @@ def test_integrate_radial():
         r, Y2 = spheroidal.integrate_radial(
             rho=1e3, vs=1e3, vp=1.7e3, R=6371e3, l=10, omega=f, r_0=1.,
             nsamp_per_layer=100, rtol=1e-10)
+
+        assert abs(Y2[-1] / Y2.ptp()) < 2e-5
+
+    model = pymesher.model.read(os.path.join(DATA_DIR, 'homo_model.bm'))
+
+    for f in freq[:5]:
+        r, Y2 = spheroidal.integrate_radial(
+            model=model, l=10, omega=f, r_0=1., nsamp_per_layer=100,
+            rtol=1e-10)
 
         assert abs(Y2[-1] / Y2.ptp()) < 2e-5
