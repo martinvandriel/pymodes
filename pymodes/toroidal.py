@@ -31,8 +31,6 @@ def analytical_bc(omega, l, rho, vs, vp, R):
     :type R: float
     :param R: radius of the sphere
     """
-
-    # Auxiliar variables
     mu = rho * vs ** 2
     omega = np.array(omega)
     k = omega / vs
@@ -89,6 +87,45 @@ def dy_dr_homo(r, y, L, N, rho, l, omega):
     return [dy1_dr, dy2_dr]
 
 
+def y_initial_conditions(r1, vs, rho, l, omega):
+    """
+    Takeuchi & Saito (1972), Eq. (95).
+    """
+    mu = rho * vs ** 2
+    k = omega / vs
+
+    j_n = spherical_jn(l, k * r1)
+    j_np1 = spherical_jn(l+1, k * r1)
+
+    y1 = j_n
+    y2 = mu / r1 * ((l - 1) * j_n - k * r1 * j_np1)
+
+    return y1, y2
+
+
+class zero_counter():
+    """
+    a helper class to detect zero crossing in integration with
+    scipy.integrate.ode and count the number of steps. To be attached to the
+    ode integrator with integrator.set_solout().
+    """
+
+    def __init__(self, dy_dt, dy_dt_args):
+        self.previous = 0.
+        self.count = 0
+        self.nstep = 0
+        self.dy_dt = dy_dt
+        self.dy_dt_args = dy_dt_args
+
+    def __call__(self, t, y):
+        self.nstep += 1
+        if self.previous * y[1] < 0.:
+            # see Al-Attar MsC Thesis, 2007, eq C.166
+            dy_dt = self.dy_dt(t, y, *self.dy_dt_args)
+            self.count += -int(np.sign(y[0]) * np.sign(dy_dt[1]))
+        self.previous = y[1]
+
+
 def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
                      nsteps=10000, rtol=1e-15, r_0=1e-10, nsamp_per_layer=100):
     """
@@ -137,6 +174,9 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
     integrator.set_integrator('dopri5', nsteps=nsteps, rtol=rtol)
     integrator.set_initial_value([y1[0], y2[0]], r_0)
 
+    zc = zero_counter(integrator.f, integrator.f_params)
+    integrator.set_solout(zc)
+
     # Do the actual integration
     for i in np.arange(nr - 1):
 
@@ -153,6 +193,6 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
             y1 /= 10
             y2 /= 10
 
-        integrator.set_initial_value([y1[i+1], y2[i+1]], integrator.t)
+            integrator.set_initial_value([y1[i+1], y2[i+1]], integrator.t)
 
-    return r_in_m, y1, y2
+    return r_in_m, y1, y2, zc.count
