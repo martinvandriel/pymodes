@@ -280,7 +280,7 @@ def y_initial_conditions(r1, vp, vs, rho, l, omega, solution=1):
 
 def dY_dr(r, Y, model, l, omega):
     """
-    Takeuchi & Saito (1972), Eq. (76) for general models.
+    Takeuchi & Saito (1972), Eq. (164) for general models.
     """
 
     if model.anisotropic:
