@@ -92,3 +92,82 @@ def analytical_eigen_frequencies_catalogue(omega_max, omega_delta, lmax, rho,
         catalogue_array[i, ofs:ofs+len(overtones)] = overtones
 
     return catalogue_array
+
+
+def integrate_eigen_frequencies(
+   omega_max, l, model=None, rho=None, vs=None, vp=None, R=None, r_0=None,
+   omega_min=0., integrator_rtol=1e-10, integrator_nsteps=100000,
+   nsamp_per_layer=10, rootfinder_tol=1e-8, rootfinder_maxiter=100, mode='T',
+   gravity=True):
+
+    if mode.upper() == 'T':
+        module = toroidal
+    elif mode.upper() == 'S':
+        module = spheroidal
+    else:
+        raise ValueError('mode needs to be S or T')
+
+    omega = np.array([omega_min, omega_max])
+
+    # For now: assume stress free boundaries at 'CMB', using a small core so we
+    # can compare to the analytical reference
+    if model is not None and not model.get_fluid_regions() == []:
+        r_0 = model.get_fluid_regions()[-1][1] * model.scale + 1e-3
+
+    # first bracket all eigenfrequencies in the interval [omega_min, omega_max]
+
+    def mode_count(omega):
+        try:
+            _, _, _, count, _, _ = module.integrate_radial(
+                omega, l, rho, vs, R, model, nsteps=integrator_nsteps,
+                rtol=integrator_rtol, r_0=r_0, nsamp_per_layer=nsamp_per_layer)
+        except toroidal.InitError:
+            count = -1
+        except toroidal.TurningPointError:
+            count = -1
+        return count
+
+    overtone = np.array([mode_count(omega_min), mode_count(omega_max)])
+
+    i = 0
+    # loop over all intervals
+    while i < len(omega) - 1:
+        print i
+        # split the interval into half until it contains at max a single
+        # eigenfrequency
+        while overtone[i+1] > overtone[i] + 1:
+            new_omega = (omega[i+1] + omega[i]) / 2
+            omega = np.insert(omega, i + 1, new_omega)
+            overtone = np.insert(overtone, i + 1, mode_count(new_omega))
+
+        # continue with next interval
+        i += 1
+
+    # remove negatve overtones resulting from frequencies with turning point
+    # outside the planet
+    mask = overtone >= 0
+    overtone = overtone[mask]
+    omega = omega[mask]
+
+    # remove empty intervals
+    mask = np.diff(overtone) > 0
+    omega_a = omega[:-1][mask]
+    omega_b = omega[1:][mask]
+
+    nf = len(omega_a)
+    eigen_frequencies = np.zeros(nf)
+
+    def secular_function(omega):
+        _, _, bc, _, sign, _ = module.integrate_radial(
+            omega, l, rho, vs, R, model, nsteps=integrator_nsteps,
+            rtol=integrator_rtol, r_0=r_0, nsamp_per_layer=nsamp_per_layer)
+        return bc[-1] * sign
+
+    # loop over intervals and converge to tolerance using Brent's method
+    for i in np.arange(nf):
+        print i, omega_a[i], omega_b[i]
+        eigen_frequencies[i] = brentq(
+            f=secular_function, a=omega_a[i], b=omega_b[i],
+            xtol=rootfinder_tol, maxiter=rootfinder_maxiter, disp=True)
+
+    return eigen_frequencies
