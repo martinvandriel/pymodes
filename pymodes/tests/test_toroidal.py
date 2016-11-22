@@ -103,24 +103,27 @@ def test_integrate_radial():
     # make sure, the stress is zero at the surface
     # subtracting a tiny bit from the frequency to check mode counting as well
     for i, f in enumerate(freq[:5] - 1e-11):
-        r, y1, y2, count, sign, _ = toroidal.integrate_radial(
+        r, y1, y2, count, n = toroidal.integrate_radial(
             model=model, l=10, omega=f, r_0=1e3, nsamp_per_layer=100,
             rtol=1e-10)
 
         np.testing.assert_allclose(y2[-1] / np.max(y2), 0., atol=1e-4)
 
-        r, y1, y2, count, sign, _ = toroidal.integrate_radial(
+        assert i == n
+        assert count == i
+
+        r, y1, y2, count, n = toroidal.integrate_radial(
             rho=1e3, vs=1e3, R=6371e3, l=10, omega=f, r_0=1e3,
             nsamp_per_layer=100, rtol=1e-10)
 
         np.testing.assert_allclose(y2[-1] / np.max(y2), 0., atol=1e-4)
 
+        assert i == n
         assert count == i
 
 
 def test_start_level():
     l = 10
-    rho = 1e3
     vs = 1e3
     R = 6371e3
     ri = 1e-10
@@ -138,6 +141,7 @@ def test_start_level():
     np.testing.assert_allclose(s, s_ref, rtol=1e-8)
 
     model = pymesher.model.read(os.path.join(DATA_DIR, 'homo_model.bm'))
+
     def vs(_r):
         return model.get_elastic_parameter('VSH', _r / model.scale)
 

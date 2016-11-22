@@ -87,6 +87,10 @@ def analytical_eigen_frequencies_catalogue(omega_max, omega_delta, lmax, rho,
     maxn = max([len(x) for x in catalogue])
 
     catalogue_array = np.empty((lmax, maxn+1)) * np.nan
+
+    # l = 1 has a trivial solution
+    catalogue_array[0, 0] = 0.
+
     for i, overtones in enumerate(catalogue):
         ofs = int(i == 0)
         catalogue_array[i, ofs:ofs+len(overtones)] = overtones
@@ -98,41 +102,34 @@ def integrate_eigen_frequencies(
    omega_max, l, model=None, rho=None, vs=None, vp=None, R=None, r_0=None,
    omega_min=0., integrator_rtol=1e-10, integrator_nsteps=100000,
    nsamp_per_layer=10, rootfinder_tol=1e-8, rootfinder_maxiter=100, mode='T',
-   gravity=True):
+   gravity=True, return_n=False):
 
     if mode.upper() == 'T':
         module = toroidal
+        # compute the modes of the outermost solid shell
+        if model is not None and not model.get_fluid_regions() == []:
+            r_0 = model.get_fluid_regions()[-1][1] * model.scale + 1e-3
     elif mode.upper() == 'S':
+        raise NotImplementedError()
         module = spheroidal
     else:
         raise ValueError('mode needs to be S or T')
 
     omega = np.array([omega_min, omega_max])
 
-    # For now: assume stress free boundaries at 'CMB', using a small core so we
-    # can compare to the analytical reference
-    if model is not None and not model.get_fluid_regions() == []:
-        r_0 = model.get_fluid_regions()[-1][1] * model.scale + 1e-3
-
-    # first bracket all eigenfrequencies in the interval [omega_min, omega_max]
-
+    # a wrapper to radial integration that returns the mode count
     def mode_count(omega):
-        try:
-            _, _, _, count, _, _ = module.integrate_radial(
-                omega, l, rho, vs, R, model, nsteps=integrator_nsteps,
-                rtol=integrator_rtol, r_0=r_0, nsamp_per_layer=nsamp_per_layer)
-        except toroidal.InitError:
-            count = -1
-        except toroidal.TurningPointError:
-            count = -1
+        _, _, _, count, _ = module.integrate_radial(
+            omega, l, rho, vs, R, model, nsteps=integrator_nsteps,
+            rtol=integrator_rtol, r_0=r_0, nsamp_per_layer=nsamp_per_layer)
+
         return count
 
     overtone = np.array([mode_count(omega_min), mode_count(omega_max)])
 
+    # first bracket all eigenfrequencies in the interval [omega_min, omega_max]
     i = 0
-    # loop over all intervals
     while i < len(omega) - 1:
-        print i
         # split the interval into half until it contains at max a single
         # eigenfrequency
         while overtone[i+1] > overtone[i] + 1:
@@ -143,13 +140,13 @@ def integrate_eigen_frequencies(
         # continue with next interval
         i += 1
 
-    # remove negatve overtones resulting from frequencies with turning point
+    # remove negative overtones resulting from frequencies with turning point
     # outside the planet
     mask = overtone >= 0
     overtone = overtone[mask]
     omega = omega[mask]
 
-    # remove empty intervals
+    # remove intervals not containing an eigenfrequency
     mask = np.diff(overtone) > 0
     omega_a = omega[:-1][mask]
     omega_b = omega[1:][mask]
@@ -157,17 +154,51 @@ def integrate_eigen_frequencies(
     nf = len(omega_a)
     eigen_frequencies = np.zeros(nf)
 
+    # a wrapper to radial integration that returns the secular function
     def secular_function(omega):
-        _, _, bc, _, sign, _ = module.integrate_radial(
+        _, _, bc, _, _ = module.integrate_radial(
             omega, l, rho, vs, R, model, nsteps=integrator_nsteps,
             rtol=integrator_rtol, r_0=r_0, nsamp_per_layer=nsamp_per_layer)
-        return bc[-1] * sign
+        return bc[-1]
 
     # loop over intervals and converge to tolerance using Brent's method
     for i in np.arange(nf):
-        print i, omega_a[i], omega_b[i]
         eigen_frequencies[i] = brentq(
             f=secular_function, a=omega_a[i], b=omega_b[i],
             xtol=rootfinder_tol, maxiter=rootfinder_maxiter, disp=True)
 
-    return eigen_frequencies
+    if return_n:
+        n = np.zeros(nf, dtype='int')
+        for i in np.arange(nf):
+            _, _, _, _, n[i] = module.integrate_radial(
+                omega, l, rho, vs, R, model, nsteps=integrator_nsteps,
+                rtol=integrator_rtol, r_0=r_0, nsamp_per_layer=nsamp_per_layer)
+
+        return eigen_frequencies, n
+
+    else:
+        return eigen_frequencies
+
+
+def integrate_eigen_frequencies_catalogue(
+   omega_max, lmax, model=None, rho=None, vs=None, vp=None, R=None, r_0=None,
+   omega_min=0., integrator_rtol=1e-10, integrator_nsteps=100000,
+   nsamp_per_layer=10, rootfinder_tol=1e-8, rootfinder_maxiter=100, mode='T',
+   gravity=True):
+
+    catalogue = []
+    for l in np.arange(1, lmax+1):
+        catalogue.append(
+            integrate_eigen_frequencies(omega_max, l, model, rho, vs, vp, R,
+                                        r_0, omega_min, integrator_rtol,
+                                        integrator_nsteps, nsamp_per_layer,
+                                        rootfinder_tol, rootfinder_maxiter,
+                                        mode, gravity))
+
+    maxn = max([len(x) for x in catalogue])
+
+    catalogue_array = np.empty((lmax, maxn)) * np.nan
+    for i, overtones in enumerate(catalogue):
+        catalogue_array[i, :len(overtones)] = overtones
+
+    return catalogue_array

@@ -120,15 +120,6 @@ class InitError(Exception):
         return repr(self.value)
 
 
-class TurningPointError(Exception):
-
-    def __init__(self, value):
-        self.value = value
-
-    def __str__(self):
-        return repr(self.value)
-
-
 class zero_counter(object):
     """
     a helper class to detect zero crossing in integration with
@@ -137,8 +128,9 @@ class zero_counter(object):
     """
 
     def __init__(self, dy_dt, dy_dt_args):
-        self.previous = 0.
+        self.previous = np.zeros(2)
         self.count = 0
+        self.count2 = 0
         self.nstep = 0
         self.dy_dt = dy_dt
         self.dy_dt_args = dy_dt_args
@@ -150,13 +142,17 @@ class zero_counter(object):
         #     raise IntegrationOverflow('')
 
         # use xor instead of multiplication to avoid float overflows
-        if ((self.previous > 0) and (y[1] < 0) or
-           (self.previous < 0) and (y[1] > 0)):
+        if ((self.previous[1] > 0) and (y[1] < 0) or
+           (self.previous[1] < 0) and (y[1] > 0)):
             # see Al-Attar MsC Thesis, 2007, eq C.166
             dy_dt = self.dy_dt(t, y, *self.dy_dt_args)
             self.count += -int(np.sign(y[0]) * np.sign(dy_dt[1]))
 
-        self.previous = y[1]
+        if ((self.previous[0] > 0) and (y[0] < 0) or
+           (self.previous[0] < 0) and (y[0] > 0)):
+            self.count2 += 1
+
+        self.previous = np.array(y)
 
 
 def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
@@ -281,7 +277,12 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
 
             integrator.set_initial_value([y1[i+1], y2[i+1]], integrator.t)
 
-    return r_in_m, y1, y2, zc.count, dy_dr_start_sign, r_start
+    # mode count is the zero crossings as counted by zero_counter + special
+    # case of the first modes that have positive derivative of the traction
+    # (see Dahlen & Tromp Figure 8.6).
+    mode_count = zc.count + (dy_dr_start_sign < 0)
+    n = zc.count2
+    return r_in_m, y1, y2, mode_count, n
 
 
 def start_level(vs, omega, l, r_min, r_max, nsamp=10000, tol_start=15):
@@ -289,7 +290,7 @@ def start_level(vs, omega, l, r_min, r_max, nsamp=10000, tol_start=15):
     r = np.linspace(r_min, r_max, nsamp, endpoint=False)
 
     if omega == 0.:
-        return r[-1]
+        return r_min
 
     if callable(vs):
         v = np.array(vs(r))
@@ -302,7 +303,7 @@ def start_level(vs, omega, l, r_min, r_max, nsamp=10000, tol_start=15):
 
     # check if turning point is above r_max
     if q[-1] < 0:
-        raise TurningPointError('turning point above r_max')
+        return r_min
 
     i_turn = max(np.argmax(q > 0), 0)
 
