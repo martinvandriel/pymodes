@@ -17,8 +17,11 @@ def start_level(vs, omega, l, r_min, r_max, nsamp=10000, tol_start=15):
 
     r = np.linspace(r_min, r_max, nsamp, endpoint=False)
 
+    if r[0] == 0.:
+        r = r[1:]
+
     if omega == 0.:
-        return r_min
+        return r[0]
 
     if callable(vs):
         v = np.array(vs(r))
@@ -31,13 +34,13 @@ def start_level(vs, omega, l, r_min, r_max, nsamp=10000, tol_start=15):
 
     # check if turning point is above r_max
     if q[-1] < 0:
-        return r_min
+        return r[0]
 
     i_turn = max(np.argmax(q > 0), 0)
 
     # if turning point below r_min
     if i_turn == 0:
-        return r_min
+        return r[0]
 
     # go down until the asymptotic solution has gone down to exp(-tol_start)
     else:
@@ -46,7 +49,7 @@ def start_level(vs, omega, l, r_min, r_max, nsamp=10000, tol_start=15):
 
         cs = cumtrapz(s)
         if cs[-1] < tol_start:
-            return r_min
+            return r[0]
         else:
             j = np.argmax(cs > tol_start)
             return r[i_turn - j]

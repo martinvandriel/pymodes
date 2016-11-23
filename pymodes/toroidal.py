@@ -92,14 +92,20 @@ def y_initial_conditions(r1, vs, rho, l, omega):
     """
     Takeuchi & Saito (1972), Eq. (95).
     """
-    mu = rho * vs ** 2
-    k = omega / vs
+    if omega > 0.:
+        mu = rho * vs ** 2
+        k = omega / vs
 
-    j_n = spherical_jn(l, k * r1)
-    j_np1 = spherical_jn(l+1, k * r1)
+        j_n = spherical_jn(l, k * r1)
+        j_np1 = spherical_jn(l+1, k * r1)
 
-    y1 = j_n
-    y2 = mu / r1 * ((l - 1) * j_n - k * r1 * j_np1)
+        y1 = j_n
+        y2 = mu / r1 * ((l - 1) * j_n - k * r1 * j_np1)
+    else:
+        # trivial solution in case of omega = 0, see Dahlen & Tromp section
+        # 8.7.2
+        y1 = r1
+        y2 = 0.
 
     return y1, y2
 
@@ -164,10 +170,10 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
 
     if model is not None:
         if not model.get_fluid_regions() == []:
-            r_0 = model.get_fluid_regions()[-1][1] * model.scale + 1e-3
+            r_0 = (model.get_fluid_regions()[-1][1] + 1e-6) * model.scale
 
         elif r_0 is None:
-            r_0 = 0.55e-6 * model.scale
+            r_0 = 0.
 
         # adapt discontinuities to r_0
         idx = model.discontinuities > r_0 / model.scale
@@ -203,7 +209,7 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
 
     elif rho is not None and vs is not None and R is not None:
         if r_0 is None:
-            r_0 = 0.55e-6 * R
+            r_0 = 0.
 
         r_in_m = np.linspace(r_0, R, nsamp_per_layer+1)
 
@@ -232,8 +238,9 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
     else:
         # use analytical solution as initial condition and for radii below the
         # starting radius
-        y1[r_in_m < r_start], y2[r_in_m < r_start] = y_initial_conditions(
-            r_in_m[r_in_m < r_start], vs, rho, l, omega)
+        mask = np.logical_and(r_in_m > 0., r_in_m < r_start)
+        y1[mask], y2[mask] = y_initial_conditions(
+            r_in_m[mask], vs, rho, l, omega)
 
         initial_conditions = y_initial_conditions(r_start, vs, rho, l, omega)
 

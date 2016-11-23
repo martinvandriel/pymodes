@@ -104,7 +104,7 @@ def test_integrate_radial():
     # subtracting a tiny bit from the frequency to check mode counting as well
     for i, f in enumerate(freq[:5] - 1e-11):
         r, y1, y2, count, n = toroidal.integrate_radial(
-            model=model, l=10, omega=f, r_0=1e3, nsamp_per_layer=100,
+            model=model, l=10, omega=f, nsamp_per_layer=100,
             rtol=1e-10)
 
         np.testing.assert_allclose(y2[-1] / np.max(y2), 0., atol=1e-4)
@@ -113,7 +113,7 @@ def test_integrate_radial():
         assert count == i
 
         r, y1, y2, count, n = toroidal.integrate_radial(
-            rho=1e3, vs=1e3, R=6371e3, l=10, omega=f, r_0=1e3,
+            rho=1e3, vs=1e3, R=6371e3, l=10, omega=f,
             nsamp_per_layer=100, rtol=1e-10)
 
         np.testing.assert_allclose(y2[-1] / np.max(y2), 0., atol=1e-4)
