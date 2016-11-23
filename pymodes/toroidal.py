@@ -10,8 +10,10 @@ full sphere.
     None
 '''
 import numpy as np
-from scipy.integrate import ode, cumtrapz
+from scipy.integrate import ode
 from scipy.special import spherical_jn
+
+from .start_level import start_level
 
 
 def analytical_bc(omega, l, rho, vs, vp, R):
@@ -138,9 +140,6 @@ class zero_counter(object):
     def __call__(self, t, y):
         self.nstep += 1
 
-        # if np.max(np.abs(y)) > 0 and int(np.log10(np.max(np.abs(y)))) > 100:
-        #     raise IntegrationOverflow('')
-
         # use xor instead of multiplication to avoid float overflows
         if ((self.previous[1] > 0) and (y[1] < 0) or
            (self.previous[1] < 0) and (y[1] > 0)):
@@ -148,6 +147,7 @@ class zero_counter(object):
             dy_dt = self.dy_dt(t, y, *self.dy_dt_args)
             self.count += -int(np.sign(y[0]) * np.sign(dy_dt[1]))
 
+        # count zero crossings of the displacement
         if ((self.previous[0] > 0) and (y[0] < 0) or
            (self.previous[0] < 0) and (y[0] > 0)):
             self.count2 += 1
@@ -283,42 +283,3 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
     mode_count = zc.count + (dy_dr_start_sign < 0)
     n = zc.count2
     return r_in_m, y1, y2, mode_count, n
-
-
-def start_level(vs, omega, l, r_min, r_max, nsamp=10000, tol_start=15):
-
-    r = np.linspace(r_min, r_max, nsamp, endpoint=False)
-
-    if omega == 0.:
-        return r_min
-
-    if callable(vs):
-        v = np.array(vs(r))
-    else:
-        v = float(vs)
-
-    pp = (l + 0.5) ** 2 / omega ** 2
-
-    q = 1. / v ** 2 - pp / r ** 2
-
-    # check if turning point is above r_max
-    if q[-1] < 0:
-        return r_min
-
-    i_turn = max(np.argmax(q > 0), 0)
-
-    # if turning point below r_min
-    if i_turn == 0:
-        return r_min
-
-    # go down until the asymptotic solution has gone down to exp(-tol_start)
-    else:
-        dr = (r[1:] - r[:-1])[:i_turn][::-1]
-        s = omega * np.sqrt(-q[:i_turn][::-1]) * dr
-
-        cs = cumtrapz(s)
-        if cs[-1] < tol_start:
-            return r_min
-        else:
-            j = np.argmax(cs > tol_start)
-            return r[i_turn - j]
