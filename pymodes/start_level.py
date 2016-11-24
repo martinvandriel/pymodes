@@ -13,9 +13,10 @@ import numpy as np
 from scipy.integrate import cumtrapz
 
 
-def start_level(vs, omega, l, r_min, r_max, nsamp=10000, tol_start=15):
+def start_level(v, omega, l, r_min, r_max, nsamp=10000, tol_start=15,
+                rfac=1.5):
 
-    r = np.linspace(r_min, r_max, nsamp, endpoint=False)
+    r = np.linspace(r_min, rfac * r_max, nsamp, endpoint=True)
 
     if r[0] == 0.:
         r = r[1:]
@@ -23,18 +24,19 @@ def start_level(vs, omega, l, r_min, r_max, nsamp=10000, tol_start=15):
     if omega == 0.:
         return r[0]
 
-    if callable(vs):
-        v = np.array(vs(r))
+    if callable(v):
+        v = np.array(v(np.clip(r, r_min, r_max)))
     else:
-        v = float(vs)
+        v = float(v)
 
     pp = (l + 0.5) ** 2 / omega ** 2
+    # pp = l * (l + 1.) / omega ** 2
 
     q = 1. / v ** 2 - pp / r ** 2
 
     # check if turning point is above r_max
     if q[-1] < 0:
-        return r[0]
+        return r_max
 
     i_turn = max(np.argmax(q > 0), 0)
 
@@ -52,4 +54,4 @@ def start_level(vs, omega, l, r_min, r_max, nsamp=10000, tol_start=15):
             return r[0]
         else:
             j = np.argmax(cs > tol_start)
-            return r[i_turn - j]
+            return min(r[i_turn - j], r_max)

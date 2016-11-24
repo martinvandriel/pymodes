@@ -35,7 +35,7 @@ def test_start_level():
 
     s = np.zeros(n)
     for i, o in enumerate(omega):
-        s[i] = start_level(vs, o, l, ri, R)
+        s[i] = start_level(vs, o, l, ri, R, nsamp=10001, rfac=1.)
 
     np.testing.assert_allclose(s, s_ref, rtol=1e-8)
 
@@ -46,6 +46,6 @@ def test_start_level():
 
     s = np.zeros(n)
     for i, o in enumerate(omega):
-        s[i] = start_level(vs, o, l, ri, R)
+        s[i] = start_level(vs, o, l, ri, R, nsamp=10001, rfac=1.)
 
     np.testing.assert_allclose(s, s_ref, rtol=1e-8)
