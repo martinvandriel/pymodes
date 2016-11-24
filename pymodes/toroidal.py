@@ -175,7 +175,7 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
     else:
         # use analytical solution as initial condition and for radii below the
         # starting radius
-        mask = np.logical_and(r_in_m > 0., r_in_m < r_start)
+        mask = np.logical_and(r_in_m > 0., r_in_m <= r_start)
         y1[mask], y2[mask] = y_initial_conditions(
             r_in_m[mask], vs, rho, l, omega)
 
@@ -189,6 +189,9 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
     dy_dr_start_sign = np.sign(integrator.f(r_start, initial_conditions,
                                             *integrator.f_params)[1])
 
+    if r_start == R:
+        return r_in_m, y1, y2, 0, 0
+
     # set integrator parameters: first_step chosen conservative to help the
     # addaptive step size algorithm get started
     integrator.set_integrator('dopri5', nsteps=nsteps, rtol=rtol,
@@ -198,9 +201,9 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
     integrator.set_initial_value(initial_conditions, r_start)
 
     # add a zero counter to get the mode count
-    zc = mode_counter(integrator.f, integrator.f_params, numerator_idx=0,
+    mc = mode_counter(integrator.f, integrator.f_params, numerator_idx=0,
                       denominator_idx=1, ndim=2, displacement_idx=0)
-    integrator.set_solout(zc)
+    integrator.set_solout(mc)
 
     # Do the actual integration
     for i in np.arange(nr - 1):
@@ -225,6 +228,6 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
     # mode count is the zero crossings as counted by zero_counter + special
     # case of the first modes that have positive derivative of the traction
     # (see Dahlen & Tromp Figure 8.6).
-    mode_count = zc.count + (dy_dr_start_sign < 0)
-    n = zc.count2
+    mode_count = mc.count + (dy_dr_start_sign < 0)
+    n = mc.count2
     return r_in_m, y1, y2, mode_count, n
