@@ -14,6 +14,8 @@ from scipy.integrate import ode
 from scipy.special import spherical_jn
 
 from .start_level import start_level
+from .misc import get_radial_sampling, InitError
+from .mode_counter import mode_counter
 
 
 def analytical_bc(omega, l, rho, vs, vp, R):
@@ -110,57 +112,6 @@ def y_initial_conditions(r1, vs, rho, l, omega):
     return y1, y2
 
 
-class IntegrationOverflow(Exception):
-
-    def __init__(self, value):
-        self.value = value
-
-    def __str__(self):
-        return repr(self.value)
-
-
-class InitError(Exception):
-
-    def __init__(self, value):
-        self.value = value
-
-    def __str__(self):
-        return repr(self.value)
-
-
-class zero_counter(object):
-    """
-    a helper class to detect zero crossing in integration with
-    scipy.integrate.ode and count the number of steps. To be attached to the
-    ode integrator with integrator.set_solout().
-    """
-
-    def __init__(self, dy_dt, dy_dt_args):
-        self.previous = np.zeros(2)
-        self.count = 0
-        self.count2 = 0
-        self.nstep = 0
-        self.dy_dt = dy_dt
-        self.dy_dt_args = dy_dt_args
-
-    def __call__(self, t, y):
-        self.nstep += 1
-
-        # use xor instead of multiplication to avoid float overflows
-        if ((self.previous[1] > 0) and (y[1] < 0) or
-           (self.previous[1] < 0) and (y[1] > 0)):
-            # see Al-Attar MsC Thesis, 2007, eq C.166
-            dy_dt = self.dy_dt(t, y, *self.dy_dt_args)
-            self.count += -int(np.sign(y[0]) * np.sign(dy_dt[1]))
-
-        # count zero crossings of the displacement
-        if ((self.previous[0] > 0) and (y[0] < 0) or
-           (self.previous[0] < 0) and (y[0] > 0)):
-            self.count2 += 1
-
-        self.previous = np.array(y)
-
-
 def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
                      nsteps=10000, rtol=1e-15, r_0=None, nsamp_per_layer=100):
     """
@@ -175,21 +126,7 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
         elif r_0 is None:
             r_0 = 0.
 
-        # adapt discontinuities to r_0
-        idx = model.discontinuities > r_0 / model.scale
-        ndisc = idx.sum() + 1
-
-        discontinuities = np.zeros(ndisc)
-        discontinuities[0] = r_0 / model.scale
-        discontinuities[1:] = model.discontinuities[idx]
-
-        # build sampling for return arrays
-        r = np.concatenate([np.linspace(discontinuities[iregion],
-                                        discontinuities[iregion+1],
-                                        nsamp_per_layer, endpoint=False)
-                            for iregion in range(ndisc-1)])
-        r = np.r_[r, np.array([1.])]
-        r_in_m = r * model.scale
+        r_in_m = get_radial_sampling(model, nsamp_per_layer, r_0)
 
         # find starting radius
         def vs_func(_r):
@@ -261,7 +198,8 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
     integrator.set_initial_value(initial_conditions, r_start)
 
     # add a zero counter to get the mode count
-    zc = zero_counter(integrator.f, integrator.f_params)
+    zc = mode_counter(integrator.f, integrator.f_params, numerator_idx=0,
+                      denominator_idx=1, ndim=2, displacement_idx=0)
     integrator.set_solout(zc)
 
     # Do the actual integration
@@ -278,11 +216,11 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
         y1[i+1], y2[i+1] = integrator.y
 
         # avoid float overflows by rescaling if the solution grows big
-        while abs(y1[i+1]) > 1e3 or abs(y2[i+1]) > 1e3:
-            y1 /= 10
-            y2 /= 10
-
-            integrator.set_initial_value([y1[i+1], y2[i+1]], integrator.t)
+        rfac = 10. ** int(np.log10(np.max(np.abs([y1[i+1], y2[i+1]]))))
+        if rfac > 1.:
+            integrator.set_initial_value(integrator.y / rfac, integrator.t)
+            y1 /= rfac
+            y2 /= rfac
 
     # mode count is the zero crossings as counted by zero_counter + special
     # case of the first modes that have positive derivative of the traction

@@ -101,7 +101,7 @@ def analytical_eigen_frequencies_catalogue(omega_max, omega_delta, lmax, rho,
 def integrate_eigen_frequencies(
    omega_max, l, model=None, rho=None, vs=None, vp=None, R=None, r_0=None,
    omega_min=0., integrator_rtol=1e-10, integrator_nsteps=100000,
-   nsamp_per_layer=10, rootfinder_tol=1e-8, rootfinder_maxiter=100, mode='T',
+   nsamp_per_layer=1, rootfinder_tol=1e-8, rootfinder_maxiter=100, mode='T',
    gravity=True, return_n=False):
 
     if mode.upper() == 'T':
@@ -188,6 +188,7 @@ def integrate_eigen_frequencies_catalogue(
 
     catalogue = []
     for l in np.arange(1, lmax+1):
+        print l
         catalogue.append(
             integrate_eigen_frequencies(omega_max, l, model, rho, vs, vp, R,
                                         r_0, omega_min, integrator_rtol,

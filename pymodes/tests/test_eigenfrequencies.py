@@ -85,7 +85,7 @@ def test_integrate_eigen_frequencies():
         R=6371e3, mode='T')
 
     freq = eigenfrequencies.integrate_eigen_frequencies(
-        omega_max, l, rho=rho, vs=vs, vp=vp, R=R, mode='T',
+        omega_max, l, rho=rho, vs=vs, vp=vp, R=R, mode='T', nsamp_per_layer=10,
         integrator_rtol=1e-8, rootfinder_tol=1e-8)
 
     np.testing.assert_allclose(freq, freq_ref, atol=1e-8)
@@ -94,8 +94,8 @@ def test_integrate_eigen_frequencies():
     model = pymesher.model.built_in('prem_iso')
 
     freq = eigenfrequencies.integrate_eigen_frequencies(
-        omega_max=0.04, l=20, model=model, mode='T', integrator_rtol=1e-7,
-        rootfinder_tol=1e-6)
+        omega_max=0.04, l=20, model=model, mode='T', nsamp_per_layer=10,
+        integrator_rtol=1e-7, rootfinder_tol=1e-6)
 
     freq_ref = np.array([0.0175524, 0.02627687, 0.03191921, 0.03658574])
     np.testing.assert_allclose(freq, freq_ref, atol=1e-8)
@@ -118,7 +118,7 @@ def test_integrate_eigen_frequencies_catalogue():
         omega_max, omega_delta, lmax, rho, vs, vp, R, mode='T')
 
     cat_t = eigenfrequencies.integrate_eigen_frequencies_catalogue(
-        omega_max, lmax, model=model, integrator_rtol=1e-6,
+        omega_max, lmax, model=model, nsamp_per_layer=10, integrator_rtol=1e-6,
         rootfinder_tol=1e-6)
 
     np.testing.assert_allclose(ref_cat_t, cat_t, atol=1e-6)
@@ -128,8 +128,8 @@ def test_integrate_eigen_frequencies_catalogue():
     model = pymesher.model.built_in('prem_iso')
 
     cat_t = eigenfrequencies.integrate_eigen_frequencies_catalogue(
-        omega_max, lmax, model=model, integrator_rtol=1e-6,
-        rootfinder_tol=1e-6)
+        omega_max, lmax, model=model, nsamp_per_layer=10,
+        integrator_rtol=1e-6, rootfinder_tol=1e-6)
 
     ref_cat_t = np.array([0., 0.00782317, 0.01386107, 0.020281, 0.02723831,
                           0.00240334, 0.00835497, 0.01413261, 0.02047369,
