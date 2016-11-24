@@ -1,14 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 '''
-A new python script.
+A helper class to do mode counting.
 
 :copyright:
     Martin van Driel (Martin@vanDriel.de), 2016
 :license:
     None
 '''
-import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -33,13 +32,9 @@ class mode_counter(object):
         self.count2 = 0 if displacement_idx is not None else None
         self.nstep = 0
 
-
     def __call__(self, t, y):
         self.nstep += 1
 
-        # use xor instead of multiplication to avoid float overflows
-        #if ((self.previous[1] > 0) and (y[1] < 0) or
-        #   (self.previous[1] < 0) and (y[1] > 0)):
         if self.previous[self.denominator_idx] * y[self.denominator_idx] < 0.:
             # see Al-Attar MsC Thesis, 2007, eq C.166
             dy_dt = self.dy_dt(t, y, *self.dy_dt_args)
@@ -47,12 +42,9 @@ class mode_counter(object):
                                np.sign(dy_dt[self.denominator_idx]))
 
         # count zero crossings of the displacement
-        #if ((self.previous[0] > 0) and (y[0] < 0) or
-        #   (self.previous[0] < 0) and (y[0] > 0)):
         if self.displacement_idx is not None:
-            if self.previous[self.displacement_idx] * y[self.displacement_idx] < 0:
+            if (self.previous[self.displacement_idx] *
+               y[self.displacement_idx]) < 0:
                 self.count2 += 1
 
         self.previous = np.array(y)
-
-

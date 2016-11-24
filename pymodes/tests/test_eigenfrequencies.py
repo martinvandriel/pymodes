@@ -98,7 +98,7 @@ def test_integrate_eigen_frequencies():
         integrator_rtol=1e-7, rootfinder_tol=1e-6)
 
     freq_ref = np.array([0.0175524, 0.02627687, 0.03191921, 0.03658574])
-    np.testing.assert_allclose(freq, freq_ref, atol=1e-8)
+    np.testing.assert_allclose(freq, freq_ref, atol=1e-6)
 
 
 def test_integrate_eigen_frequencies_catalogue():
