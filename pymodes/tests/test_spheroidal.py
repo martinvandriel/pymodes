@@ -270,17 +270,27 @@ def test_integrate_radial_minor():
         omega_max=0.01, omega_delta=0.00001, l=10, rho=1e3, vs=1e3, vp=1.7e3,
         R=6371e3, mode='S', gravity=False)
 
-    for f in freq[:5]:
-        r, Y2 = spheroidal.integrate_radial_minor(
-            rho=1e3, vs=1e3, vp=1.7e3, R=6371e3, l=10, omega=f, r_0=1.,
-            nsamp_per_layer=10, rtol=1e-5)
+    # check zeros of the boundary condition
+    for i, f in enumerate(freq[:5]):
+        r, Y2, count, r_start = spheroidal.integrate_radial_minor(
+            rho=1e3, vs=1e3, vp=1.7e3, R=6371e3, l=10, omega=f, r_0=0.,
+            nsamp_per_layer=1000, rtol=1e-5)
 
         assert abs(Y2[-1] / Y2.ptp()) < 2e-5
 
+    # check counter
+    for i, f in enumerate(freq[:5] - 1e-7):
+        r, Y2, count, r_start = spheroidal.integrate_radial_minor(
+            rho=1e3, vs=1e3, vp=1.7e3, R=6371e3, l=10, omega=f, r_0=0.,
+            nsamp_per_layer=1000, rtol=1e-5)
+
+        assert count == i
+
+    # similar with pymesher model
     model = pymesher.model.read(os.path.join(DATA_DIR, 'homo_model.bm'))
 
     for f in freq[:5]:
-        r, Y2 = spheroidal.integrate_radial_minor(
+        r, Y2, count, _ = spheroidal.integrate_radial_minor(
             model=model, l=10, omega=f, r_0=1., nsamp_per_layer=10,
             rtol=1e-5)
 

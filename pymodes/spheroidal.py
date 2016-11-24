@@ -15,6 +15,9 @@ from scipy.integrate import ode
 from scipy.special import spherical_jn
 import warnings
 
+from .start_level import start_level
+from .misc import get_radial_sampling, InitError
+from .mode_counter import mode_counter
 
 G = 6.67408e-11
 
@@ -350,6 +353,26 @@ def dY_dr_homo(r, Y, A, C, L, N, F, rho, l, omega):
     return [dY1_dr, dY2_dr, dY3_dr, dY4_dr, dY5_dr]
 
 
+def Y_initial_conditions_new(r1, vp, vs, rho, l, omega):
+    """
+    compute the minor initial conditions from the standard ones via Takeuchi &
+    Saito equation (153). Avoids the divion by zero at roots of the Bessel
+    functions in the z_l function.
+    """
+    y11, y21, y31, y41 = y_initial_conditions(r1, vp, vs, rho, l, omega,
+                                              solution=1)
+    y12, y22, y32, y42 = y_initial_conditions(r1, vp, vs, rho, l, omega,
+                                              solution=2)
+
+    Y1 = y11 * y32 - y12 * y31
+    Y2 = y21 * y42 - y22 * y41
+    Y3 = y11 * y22 - y12 * y21
+    Y4 = y11 * y42 - y12 * y41
+    Y5 = y31 * y22 - y32 * y21
+
+    return Y1, Y2, Y3, Y4, Y5
+
+
 def z_l(l, x):
     """
     Takeuchi & Saito (1972), Eq. (96).
@@ -357,16 +380,28 @@ def z_l(l, x):
     return x * spherical_jn(l+1, x) / spherical_jn(l, x)
 
 
+def z_l_rec(l, x, nrec=100):
+    """
+    Takeuchi & Saito (1972), Eq. (9y).
+    """
+    z = x ** 2 / (2 * (l + nrec) + 3)
+    for i in np.arange(nrec):
+        li = l + nrec - i
+        z = x ** 2 / ((2 * li + 1) - z)
+    return z
+
+
 def Y_initial_conditions(r1, vp, vs, rho, l, omega):
     """
-    Takeuchi & Saito (1972), Eq. (165).
+    Takeuchi & Saito (1972), Eq. (165). Can only be used below the first zero
+    crossing, otherwise will lead to division by zero errors.
     """
 
     xa = omega / vp * r1
     xb = omega / vs * r1
 
-    za = 1. / l * z_l(l, xa)
-    zb = 1. / (l + 1) * z_l(l, xb)
+    za = 1. / l * z_l_rec(l, xa)
+    zb = 1. / (l + 1) * z_l_rec(l, xb)
 
     mu = rho * vs ** 2
 
@@ -400,27 +435,14 @@ def integrate_radial(omega, l, rho=None, vs=None, vp=None, R=None, model=None,
         if np.any(model.get_fluid_regions()):
             raise ValueError('Not a fully solid planet!')
 
-        # adapt discontinuities to r_0
-        idx = model.discontinuities > r_0 / model.scale
-        ndisc = idx.sum() + 1
-
-        discontinuities = np.zeros(ndisc)
-        discontinuities[0] = r_0 / model.scale
-        discontinuities[1:] = model.discontinuities[idx]
-
-        # build sampling for return arrays
-        r = np.concatenate([np.linspace(discontinuities[iregion],
-                                        discontinuities[iregion+1],
-                                        nsamp_per_layer, endpoint=False)
-                            for iregion in range(ndisc-1)])
-        r = np.r_[r, np.array([1.])]
-        r_in_m = r * model.scale
+        r_in_m = get_radial_sampling(model, nsamp_per_layer, r_0)
 
         # evaluate model to compute initial values assuming isotropic,
         # homogeneous sphere in the center
-        vp = model.get_elastic_parameter('VP', r[:1])[0]
-        vs = model.get_elastic_parameter('VS', r[:1])[0]
-        rho = model.get_elastic_parameter('RHO', r[:1])[0]
+        _r = r_in_m[:1] / model.scale
+        vp = model.get_elastic_parameter('VP', _r)[0]
+        vs = model.get_elastic_parameter('VS', _r)[0]
+        rho = model.get_elastic_parameter('RHO', _r)[0]
 
         integrator = ode(dy_dr)
         integrator.set_f_params(model, l, omega)
@@ -473,54 +495,49 @@ def integrate_radial(omega, l, rho=None, vs=None, vp=None, R=None, model=None,
         y1[i+1], y2[i+1], y3[i+1], y4[i+1] = integrator.y
 
         # avoid float overflows by rescaling if the solution grows big
-        rfac = 1.
-        while abs(y2[i+1]) > 1e3:
-            y1 /= 10
-            y2 /= 10
-            y3 /= 10
-            y4 /= 10
-            rfac /= 10
-
-        if rfac < 1.:
-            integrator.set_initial_value(integrator.y * rfac, integrator.t)
+        rfac = 10. ** int(np.log10(np.max(np.abs([
+            y1[i+1], y2[i+1], y2[i+1], y3[i+1]]))))
+        if rfac > 1.:
+            integrator.set_initial_value(integrator.y / rfac, integrator.t)
+            y1 /= rfac
+            y2 /= rfac
+            y3 /= rfac
+            y4 /= rfac
 
     return r_in_m, y1, y2, y3, y4
 
 
 def integrate_radial_minor(omega, l, rho=None, vs=None, vp=None, R=None,
-                           model=None, nsteps=10000, rtol=1e-15, r_0=1e-10,
+                           model=None, nsteps=10000, rtol=1e-15, r_0=0.,
                            nsamp_per_layer=100):
     """
     integrate the minor vector equation Takeuchi & Saito (1972), Eq (164)
     radially, initial conditions assume a homogeneous sphere within the radius
     r_0. Fully solid planets only.
     """
-
     if model is not None:
         if np.any(model.get_fluid_regions()):
             raise ValueError('Not a fully solid planet!')
 
-        # adapt discontinuities to r_0
-        idx = model.discontinuities > r_0 / model.scale
-        ndisc = idx.sum() + 1
+        r_in_m = get_radial_sampling(model, nsamp_per_layer, r_0)
 
-        discontinuities = np.zeros(ndisc)
-        discontinuities[0] = r_0 / model.scale
-        discontinuities[1:] = model.discontinuities[idx]
+        # find starting radius
+        def vs_func(_r):
+            return model.get_elastic_parameter('VS', _r / model.scale)
 
-        # build sampling for return arrays
-        r = np.concatenate([np.linspace(discontinuities[iregion],
-                                        discontinuities[iregion+1],
-                                        nsamp_per_layer, endpoint=False)
-                            for iregion in range(ndisc-1)])
-        r = np.r_[r, np.array([1.])]
-        r_in_m = r * model.scale
+        def vp_func(_r):
+            return model.get_elastic_parameter('VP', _r / model.scale)
+
+        r_start = min(start_level(vs_func, omega, l, r_0, model.scale),
+                      start_level(vp_func, omega, l, r_0, model.scale))
 
         # evaluate model to compute initial values assuming isotropic,
         # homogeneous sphere in the center
-        vp = model.get_elastic_parameter('VP', r[:1])[0]
-        vs = model.get_elastic_parameter('VS', r[:1])[0]
-        rho = model.get_elastic_parameter('RHO', r[:1])[0]
+        _r = np.array([r_start]) / model.scale
+        vp = model.get_elastic_parameter('VP', _r)[0]
+        vs = model.get_elastic_parameter('VS', _r)[0]
+        rho = model.get_elastic_parameter('RHO', _r)[0]
+        R = model.scale
 
         integrator = ode(dY_dr)
         integrator.set_f_params(model, l, omega)
@@ -542,22 +559,45 @@ def integrate_radial_minor(omega, l, rho=None, vs=None, vp=None, R=None,
         N = mu
         F = lam
 
+        # find starting radius
+        r_start = min(start_level(vs, omega, l, r_0, R),
+                      start_level(vp, omega, l, r_0, R))
+
         integrator = ode(dY_dr_homo)
         integrator.set_f_params(A, C, L, N, F, rho, l, omega)
     else:
         raise ValueError('either provide a pymesher model or vs, rho and R')
 
-    # assume to start at a stress free boundary and set initial conditions
+    # assume homogeneous model below some starting radius
     nr = len(r_in_m)
     Y2 = np.zeros(nr)
-    initial_conditions = Y_initial_conditions(r_0, vp, vs, rho, l, omega)
-    Y2[0] = initial_conditions[1]
 
-    integrator.set_integrator('dopri5', nsteps=nsteps, rtol=rtol)
-    integrator.set_initial_value(initial_conditions, r_0)
+    # use analytical solution as initial condition and for radii below the
+    # starting radius
+    mask = np.logical_and(r_in_m > 0., r_in_m <= r_start)
+    Y2[mask] = Y_initial_conditions_new(r_in_m[mask], vp, vs, rho, l, omega)[1]
+
+    if r_start == R:
+        return r_in_m, Y2, 0, r_start
+
+    initial_conditions = Y_initial_conditions(r_start, vp, vs, rho, l, omega)
+
+    if (np.array(initial_conditions) ** 2).sum() == 0:
+        raise InitError('zero initial conditions')
+
+    integrator.set_integrator('dopri5', nsteps=nsteps, rtol=rtol,
+                              first_step=(R - r_start) / nsteps / 100)
+    integrator.set_initial_value(initial_conditions, r_start)
+
+    # add a zero counter to get the mode count
+    mc = mode_counter(integrator.f, integrator.f_params, numerator_idx=3,
+                      denominator_idx=1, ndim=4)
+    integrator.set_solout(mc)
 
     # Do the actual integration
     for i in np.arange(nr - 1):
+        if r_in_m[i+1] < r_start:
+            continue
 
         integrator.integrate(r_in_m[i+1])
 
@@ -568,12 +608,10 @@ def integrate_radial_minor(omega, l, rho=None, vs=None, vp=None, R=None,
         Y2[i+1] = integrator.y[1]
 
         # avoid float overflows by rescaling if the solution grows big
-        rfac = 1.
-        while abs(Y2[i+1]) > 1e3:
-            Y2 /= 10
-            rfac /= 10
+        rfac = 10. ** int(np.log10(abs(Y2[i+1])))
 
-        if rfac < 1.:
-            integrator.set_initial_value(integrator.y * rfac, integrator.t)
+        if rfac > 1.:
+            integrator.set_initial_value(integrator.y / rfac, integrator.t)
+            Y2 /= rfac
 
-    return r_in_m, Y2
+    return r_in_m, Y2, mc.count, r_start
