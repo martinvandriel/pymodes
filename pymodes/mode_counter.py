@@ -38,8 +38,13 @@ class mode_counter(object):
         if self.previous[self.denominator_idx] * y[self.denominator_idx] < 0.:
             # see Al-Attar MsC Thesis, 2007, eq C.166
             dy_dt = self.dy_dt(t, y, *self.dy_dt_args)
-            self.count += -int(np.sign(y[self.numerator_idx]) *
-                               np.sign(dy_dt[self.denominator_idx]))
+            if isinstance(self.numerator_idx, (int, long)):
+                self.count += -int(np.sign(y[self.numerator_idx]) *
+                                   np.sign(dy_dt[self.denominator_idx]))
+            elif type(self.numerator_idx) is tuple:
+                self.count += int(np.sign(y[self.numerator_idx[0]] -
+                                          y[self.numerator_idx[1]]) *
+                                  np.sign(dy_dt[self.denominator_idx]))
 
         # count zero crossings of the displacement
         if self.displacement_idx is not None:

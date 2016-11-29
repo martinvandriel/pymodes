@@ -113,7 +113,8 @@ def y_initial_conditions(r1, vs, rho, l, omega):
 
 
 def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
-                     nsteps=10000, rtol=1e-15, r_0=None, nsamp_per_layer=100):
+                     nsteps=10000, rtol=1e-15, r_0=None, nsamp_per_layer=100,
+                     **kwargs):
     """
     integrate Takeuchi & Saito (1972), Eq (76) radially, subject to stress free
     initial conditions (e.g. the CMB).
@@ -190,7 +191,7 @@ def integrate_radial(omega, l, rho=None, vs=None, R=None, model=None,
                                             *integrator.f_params)[1])
 
     if r_start == R:
-        return r_in_m, y1, y2, 0, 0
+        return r_in_m, y1, y2, -1, 0
 
     # set integrator parameters: first_step chosen conservative to help the
     # addaptive step size algorithm get started

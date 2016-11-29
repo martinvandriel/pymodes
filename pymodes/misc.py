@@ -11,7 +11,8 @@ Some helper functions
 import numpy as np
 
 
-def get_radial_sampling(model, nsamp_per_layer, r_0):
+def get_radial_sampling(model, nsamp_per_layer, r_0,
+                        return_discontinuities=False):
     # adapt discontinuities to r_0
     idx = model.discontinuities > r_0 / model.scale
     ndisc = idx.sum() + 1
@@ -26,7 +27,11 @@ def get_radial_sampling(model, nsamp_per_layer, r_0):
                                     nsamp_per_layer, endpoint=False)
                         for iregion in range(ndisc-1)])
     r = np.r_[r, np.array([1.])]
-    return r * model.scale
+
+    if return_discontinuities:
+        return r * model.scale, discontinuities
+    else:
+        return r * model.scale
 
 
 class InitError(Exception):

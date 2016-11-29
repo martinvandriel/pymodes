@@ -80,6 +80,7 @@ def test_integrate_eigen_frequencies():
     R = 6371e3
     omega_max = 0.01
 
+    # TOROIDAL
     freq_ref = eigenfrequencies.analytical_eigen_frequencies(
         omega_max=omega_max, omega_delta=0.00001, l=l, rho=rho, vs=vs, vp=vp,
         R=6371e3, mode='T')
@@ -100,6 +101,28 @@ def test_integrate_eigen_frequencies():
     freq_ref = np.array([0.0175524, 0.02627687, 0.03191921, 0.03658574])
     np.testing.assert_allclose(freq, freq_ref, atol=1e-6)
 
+    # SPHEROIDAL
+    freq_ref = eigenfrequencies.analytical_eigen_frequencies(
+        omega_max=omega_max, omega_delta=0.00001, l=l, rho=rho, vs=vs, vp=vp,
+        R=6371e3, mode='S', gravity=False)
+
+    freq = eigenfrequencies.integrate_eigen_frequencies(
+        omega_max, l, rho=rho, vs=vs, vp=vp, R=R, mode='S', nsamp_per_layer=10,
+        integrator_rtol=1e-8, rootfinder_tol=1e-8, gravity=False)
+
+    np.testing.assert_allclose(freq, freq_ref, atol=1e-8)
+
+    # CI
+    model = pymesher.model.read(os.path.join(DATA_DIR, 'prem_iso_solid.bm'))
+
+    freq = eigenfrequencies.integrate_eigen_frequencies(
+        omega_max=0.04, l=20, model=model, mode='S', nsamp_per_layer=10,
+        integrator_rtol=1e-7, rootfinder_tol=1e-6, gravity=False)
+
+    freq_ref = np.array([0.0182855, 0.02485917, 0.02911758, 0.03383443,
+                         0.03860865])
+    np.testing.assert_allclose(freq, freq_ref, atol=1e-6)
+
 
 def test_integrate_eigen_frequencies_catalogue():
 
@@ -109,9 +132,10 @@ def test_integrate_eigen_frequencies_catalogue():
     vs = 1e3
     vp = 1.7e3
     R = 6371e3
-    omega_max = 0.005
     omega_delta = 0.00001
 
+    # TOROIDAL
+    omega_max = 0.005
     model = pymesher.model.read(os.path.join(DATA_DIR, 'homo_model.bm'))
 
     ref_cat_t = eigenfrequencies.analytical_eigen_frequencies_catalogue(
@@ -137,3 +161,34 @@ def test_integrate_eigen_frequencies_catalogue():
                           0.02076128, 0.02758907])
 
     np.testing.assert_allclose(ref_cat_t, cat_t.flatten(), atol=1e-7)
+
+    # SPHEROIDAL
+    omega_max = 0.002
+    model = pymesher.model.read(os.path.join(DATA_DIR, 'homo_model.bm'))
+
+    ref_cat_s = eigenfrequencies.analytical_eigen_frequencies_catalogue(
+        omega_max, omega_delta, lmax, rho, vs, vp, R, mode='S', gravity=False)
+
+    cat_s = eigenfrequencies.integrate_eigen_frequencies_catalogue(
+        omega_max, lmax, model=model, nsamp_per_layer=10, integrator_rtol=1e-6,
+        rootfinder_tol=1e-6, mode='S', gravity=False)
+
+    # remove zero from analytical catalogue
+    ref_cat_s[0, :-1] = ref_cat_s[0, 1:]
+    ref_cat_s = ref_cat_s[:, :-1]
+
+    np.testing.assert_allclose(ref_cat_s, cat_s, atol=1e-6)
+
+    # CI
+    omega_max = 0.01
+    model = pymesher.model.read(os.path.join(DATA_DIR, 'prem_iso_solid.bm'))
+
+    cat_s = eigenfrequencies.integrate_eigen_frequencies_catalogue(
+        omega_max, lmax, model=model, nsamp_per_layer=10,
+        integrator_rtol=1e-6, rootfinder_tol=1e-6, mode='S', gravity=False)
+
+    ref_cat_s = np.array([0.00242908, 0.00516044, 0.00807586, np.nan,
+                          0.00378237, 0.00462673, 0.00738657, 0.00874269,
+                          0.00524572, 0.00627948, 0.00929735, np.nan])
+
+    np.testing.assert_allclose(ref_cat_s, cat_s.flatten(), atol=1e-7)

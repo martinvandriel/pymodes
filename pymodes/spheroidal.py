@@ -509,7 +509,7 @@ def integrate_radial(omega, l, rho=None, vs=None, vp=None, R=None, model=None,
 
 def integrate_radial_minor(omega, l, rho=None, vs=None, vp=None, R=None,
                            model=None, nsteps=10000, rtol=1e-15, r_0=0.,
-                           nsamp_per_layer=100):
+                           nsamp_per_layer=100, return_compat_mode=False):
     """
     integrate the minor vector equation Takeuchi & Saito (1972), Eq (164)
     radially, initial conditions assume a homogeneous sphere within the radius
@@ -519,17 +519,32 @@ def integrate_radial_minor(omega, l, rho=None, vs=None, vp=None, R=None,
         if np.any(model.get_fluid_regions()):
             raise ValueError('Not a fully solid planet!')
 
-        r_in_m = get_radial_sampling(model, nsamp_per_layer, r_0)
+        r_in_m, discontinuities = get_radial_sampling(
+            model, nsamp_per_layer, r_0, return_discontinuities=True)
 
         # find starting radius
-        def vs_func(_r):
-            return model.get_elastic_parameter('VS', _r / model.scale)
+        def v_func(_r):
+            v = model.get_elastic_parameter('VS', _r / model.scale)
+            vp = model.get_elastic_parameter('VP', _r / model.scale)
+            mask_fluid = v == 0.
+            v[mask_fluid] = vp[mask_fluid]
+            return v
 
-        def vp_func(_r):
-            return model.get_elastic_parameter('VP', _r / model.scale)
+        r_start = start_level(v_func, omega, l, r_0, model.scale)
 
-        r_start = min(start_level(vs_func, omega, l, r_0, model.scale),
-                      start_level(vp_func, omega, l, r_0, model.scale))
+        # make sure to stay below the first discontinuity
+        r_start = min(r_start, discontinuities[1] * model.scale)
+
+        # snap to discontinuities, somewhat empirical try to make sure to not
+        # miss any zeros in mode counting
+        # mask = np.logical_and(discontinuities > 0.,
+        #                       discontinuities < r_start)
+        # crit = (r_start / (discontinuities[mask] * model.scale) <
+        #         1. + 100 * r_start / model.scale / l)
+        # if np.any(crit):
+        #     r_start = min(r_start, discontinuities[mask][np.argmax(crit)] *
+        #                   model.scale)
+        #     #print 'snapping r_start to discontinuity, ', r_start
 
         # evaluate model to compute initial values assuming isotropic,
         # homogeneous sphere in the center
@@ -560,8 +575,7 @@ def integrate_radial_minor(omega, l, rho=None, vs=None, vp=None, R=None,
         F = lam
 
         # find starting radius
-        r_start = min(start_level(vs, omega, l, r_0, R),
-                      start_level(vp, omega, l, r_0, R))
+        r_start = start_level(vs, omega, l, r_0, R)
 
         integrator = ode(dY_dr_homo)
         integrator.set_f_params(A, C, L, N, F, rho, l, omega)
@@ -577,20 +591,37 @@ def integrate_radial_minor(omega, l, rho=None, vs=None, vp=None, R=None,
     mask = np.logical_and(r_in_m > 0., r_in_m <= r_start)
     Y2[mask] = Y_initial_conditions_new(r_in_m[mask], vp, vs, rho, l, omega)[1]
 
-    if r_start == R:
-        return r_in_m, Y2, 0, r_start
+    if r_start == R or omega == 0.:
+        if return_compat_mode:
+            return r_in_m, None, Y2, -1, 0
+        else:
+            return r_in_m, Y2, -1, r_start
 
+    # make sure to smoothly connect to the initial conditian
+    if np.any(mask):
+        Y2_scale = (
+            Y_initial_conditions(r_start, vp, vs, rho, l, omega)[1] /
+            Y_initial_conditions_new(r_start, vp, vs, rho, l, omega)[1])
+
+        Y2 *= Y2_scale
+
+    # Y_initial_conditions gives a better order of magnitude, but is not the
+    # solution itself as a function of radius but scaled with some function of
+    # radius
     initial_conditions = Y_initial_conditions(r_start, vp, vs, rho, l, omega)
-
-    if (np.array(initial_conditions) ** 2).sum() == 0:
+    scale = np.max(np.abs(initial_conditions))
+    if np.abs(np.array(initial_conditions)).sum() == 0:
         raise InitError('zero initial conditions')
+
+    initial_conditions = np.array(initial_conditions) / scale
+    Y2 /= scale
 
     integrator.set_integrator('dopri5', nsteps=nsteps, rtol=rtol,
                               first_step=(R - r_start) / nsteps / 100)
     integrator.set_initial_value(initial_conditions, r_start)
 
     # add a zero counter to get the mode count
-    mc = mode_counter(integrator.f, integrator.f_params, numerator_idx=3,
+    mc = mode_counter(integrator.f, integrator.f_params, numerator_idx=(4, 3),
                       denominator_idx=1, ndim=4)
     integrator.set_solout(mc)
 
@@ -614,4 +645,7 @@ def integrate_radial_minor(omega, l, rho=None, vs=None, vp=None, R=None,
             integrator.set_initial_value(integrator.y / rfac, integrator.t)
             Y2 /= rfac
 
-    return r_in_m, Y2, mc.count, r_start
+    if return_compat_mode:
+        return r_in_m, None, Y2, mc.count, 0
+    else:
+        return r_in_m, Y2, mc.count, r_start
